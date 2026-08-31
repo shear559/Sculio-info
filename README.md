@@ -22,20 +22,34 @@ The enhancer now resolves the chain itself: fetch each bare `@import` through th
 
 ## Gating paid API spend at the edge
 
-`/api/ai/build`, `/api/ai/research` and `/api/analyze/run` sit behind a same-origin check plus a single-use Cloudflare Turnstile token verified server-side, fail-closed, since Origin alone is forgeable. Behind that, `api/_entitlement-token.js` mints a non-forgeable HMAC entitlement (`{sub, tier, tokens, exp}`) wired into all three routes but deliberately **inert** behind an env flag until a Supabase balance and payment webhook exist. Signing a client-supplied tier would have been the half-fix; it wasn't shipped.
+The three paid routes - AI build, AI research and Analyze - sit behind a same-origin check plus a single-use Cloudflare Turnstile token verified server-side, fail-closed, since Origin alone is forgeable. Behind that, a non-forgeable HMAC entitlement token (`{sub, tier, tokens, exp}`, mintable only server-side) is wired into all three routes but stays **inert** until its signing secret is provisioned - enforcement follows the secret, not a separate switch - because the balance backend and payment webhook don't exist yet. Signing a client-supplied tier would have been the half-fix; it wasn't shipped.
 
-Scraping runs behind a self-hosted `url-proxy-v2` Worker with KV rate caps. The analyze scraper's direct fetch walks redirects manually, revalidating each hop against the SSRF allowlist, since `redirect: 'follow'` chases a 30x to a link-local address blind; the matching revalidation in `url-proxy-v2` is written but still awaits a `wrangler deploy`, since Workers don't deploy on git push.
+Scraping runs behind a self-hosted proxy Worker with KV rate caps. The analyze scraper's direct fetch walks redirects manually, three hops at most, revalidating each hop against the SSRF allowlist, since `redirect: 'follow'` chases a 30x to a link-local address blind; the clone proxy Worker's source carries the same walk.
 
 ## Isolating a competitor-analysis report inside the editor
 
-Analyze is a framework-free 13-module engine on Vercel Node routes: no persistence, no paid keys by default, company facts from Wikidata, GLEIF, SEC and RDAP. Its charts are all inline SVG (138 in the sample report, a 5-axis radar, box plots) and the report mounts in a **shadow root** with its own stylesheets, so it and the editor's CSS can't reach each other.
+Analyze is a framework-free engine of pure ES modules on Vercel Node routes: no persistence, no paid keys by default, company facts from Wikidata, GLEIF, SEC and RDAP. Its charts are all inline SVG (138 in the sample report, a 5-axis radar, box plots) and the report mounts in a **shadow root** with its own stylesheets, so it and the editor's CSS can't reach each other.
 
 ## Verifying past an anti-clone wipe with curl and a seeded Playwright session
 
-The landing page runs an anti-clone script that blanks the DOM under automation - which also blanks your own headless QA. Verification splits: `curl` for headers, endpoint gates and served bundles; an admin-seeded Playwright session for the editor interior, since the wipe only covers `/`. Compositor animations don't tick under Chrome's `--virtual-time-budget`, so the hero demo's beats were checked by seeking with negative `animation-delay` per frame. The unit suite stood at 635 green at the last hardening pass.
+The landing page runs an anti-clone script that blanks the DOM under automation - which also blanks your own headless QA. Verification splits: `curl` for headers, endpoint gates and served bundles; an admin-seeded Playwright session for the editor interior, since the wipe only covers the landing surface, never the editor view. Compositor animations don't tick under Chrome's `--virtual-time-budget`, so the hero demo's beats were checked by seeking with negative `animation-delay` per frame. The unit suite is 635 green under `node --test`.
 
 ## Stack
 
-`vanilla JS` `CSS` `HTML`, no framework. Vercel serverless routes under `api/`; Node for tests. Self-hosted Cloudflare Workers: `url-proxy-v2`, `sculio-turnstile-verify`, `ai-builder` (Claude Sonnet, HMAC-signed) and `email-send` (Resend dispatcher, HMAC-verified, R2 idempotency).
+`vanilla JS` `CSS` `HTML`, no framework. Vercel serverless routes under `api/`; Node for tests. Four self-hosted Cloudflare Workers: a URL proxy with KV rate caps, Turnstile verification, the AI builder (Claude Sonnet, HMAC-signed) and transactional email (Resend dispatcher, HMAC-verified, R2 idempotency).
 
 Supabase auth and subscriptions are wired but dormant until env keys are set. RTL is supported; the editor is desktop-only below 760px, gated at one choke point, not per entry door.
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/how-it-works.webp" alt="How it works — describe, clone or upload; pick one of 70 templates or mix three; export self-contained HTML" width="100%">
+</p>
+<p align="center">
+  <img src="assets/brand-mix.webp" alt="Mix mode — three brands, each owning colours, typography or layout, fused into one look" width="100%">
+</p>
+<p align="center">
+  <img src="assets/mobile-home.webp" alt="Sculio landing page on a 390px mobile viewport" width="45%">
+</p>
+
+Source is private. Built by [@shear559](https://github.com/shear559).
